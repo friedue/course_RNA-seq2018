@@ -201,13 +201,6 @@ It is usually helpful to *transform* the normalized read counts to bring them on
 of log2(read counts) - one for unnormalized counts, the other one for normalized
 counts (exclude genes with zero reads in all samples).
 
-```{r logReadCountTables}
-# non-normalized read counts plus pseudocount
-log.counts <- log2(counts(DESeq.ds, normalized = FALSE) + 1)
-# normalized read counts
-log.norm.counts <- log2(counts(DESeq.ds, normalized=TRUE) + 1)
-```
-
 ```{r boxplots_logReadCounts, fig.width = 10, fig.height = 15}
 par(mfrow=c(1,2)) # to plot the two box plots next to each other
 boxplot(log.counts, notch=TRUE,
@@ -218,17 +211,42 @@ boxplot(log.norm.counts, notch=TRUE,
         ylab="read counts") 
 ```
 
+--------------------------------
+
+## Day 4
+
+### Understanding more properties of read count data
+
+Characteristics we've touched upon so farL:
+
+* zeros can mean two things: no expression or no detection
+* fairly large dynamic range
+
 >Make a scatterplot of log normalized counts against each other to see how well 
 the actual values correlate which each other per sample and gene.
 
-```{r scatterplots_logNormReadCounts, fig.width = 10, fig.height = 15}
-library(vsn)
+```{r}
+load("~/Documents/Teaching/2018_RNA-seq/Rclass.RData")
+library(magrittr)
+library(ggplot2)
+library(DESeq2)
+```
 
+```{r logReadCountTables}
+# non-normalized read counts plus pseudocount
+log.counts <- log2(counts(DESeq.ds, normalized = FALSE) + 1)
+# instead of creating a new object, we could assign the values to a distinct matrix
+# within the DESeq.ds object
+assay(DESeq.ds, "log.counts") <- log.counts
+# normalized read counts
+log.norm.counts <- log2(counts(DESeq.ds, normalized=TRUE) + 1)
+assay(DESeq.ds, "log.norm.counts") <- log.norm.counts
+```
+
+```{r scatterplots_logNormReadCounts, fig.width = 10, fig.height = 15}
 par(mfrow=c(2,1)) 
-plot(log.norm.counts[, c("WT_1","WT_2")], cex=.1,
-     main = "WT_1 vs. WT_2")
-plot(log.norm.counts[,c("SNF2_1","SNF2_2")], cex=.1,
-     main = "SNF2_1 vs SNF2_2")
+DESeq.ds[, c("WT_1","WT_2")] %>% assay(.,  "log.norm.counts") %>% plot(., cex=.1, main = "WT_1 vs. WT_2")
+DESeq.ds[, c("SNF2_1","SNF2_2")] %>% assay(.,  "log.norm.counts") %>% plot(., cex=.1, main = "SNF2_1 vs SNF2_2")
 ```
 
 Every dot = one gene.
@@ -236,32 +254,21 @@ Every dot = one gene.
 The fanning out of the points in the lower left corner (points below $2^5 = 32$) 
 indicates that read counts correlate less well between replicates when they are low.
 
-```{r scatterplots_logNormReadCounts_allSamples, fig.width = 10, fig.height = 10}
-# comparing all samples per condition at once
-pairs(log.norm.counts[,c(paste("WT",c(1:5),sep="_"))])
-pairs(log.norm.counts[,c(paste("SNF2",c(1:5),sep="_"))])
-```
+This observation indicates that the standard deviation of the expression levels 
+may depend on the mean: the lower the mean read counts per gene, the higher the
+standard deviation.
 
-The scattering of the points for fewer than 32 reads indicates that the standard 
-deviation of the fold changes may depend on the mean: the lower the mean read counts
-per gene, the higher the standard deviation.
 This can be assessed visually; the package `vsn` offers a simple function for this.
 
 ```{r vsn}
 par(mfrow=c(1,1))
-# sequencing depth normalized log2(read counts)
+# generate the base meanSdPlot using sequencing depth normalized log2(read counts)
 msd_plot <- vsn::meanSdPlot(log.norm.counts, 
                        ranks=FALSE, # show the data on the original scale
                        plot = FALSE)
 msd_plot$gg + 
-  ggtitle("sequencing depth normalized log2(read counts)") +
+  ggtitle("Sequencing depth normalized log2(read counts)") +
   ylab("standard deviation") 
-```
-
-Let's save our workspace at this point.
-
-```{r save_data}
-save.image(file = paste0(folder, "featureCountExploration.RDat"))
 ```
 
 From the help for`meanSdPlot`: *The red dots depict the running median estimator* 
@@ -272,16 +279,10 @@ The plot here shows that there is some variance-mean dependence for genes with
 low read counts.
 This means that the data shows signs of _heteroskedasticity_.
 
-
-```{r}
-load("featureCountExploration.RDat")
-library(DESeq2)
-library(vsn)
-```
-
 Many tools expect data to be _homoskedastic_, i.e., all variables should have similar variances.
 
-DESeq offers two ways to shrink the log-transformed counts for genes with very low counts: `rlog` and `varianceStabilizingTransformation`.
+DESeq offers two ways to shrink the log-transformed counts for genes with very 
+low counts: `rlog` and `varianceStabilizingTransformation` (`vst`).
 
 We'll use `rlog` here as it is an optimized method for RNA-seq read counts:
 it transforms the read counts to the log2 scale while simultaneously minimizing 
@@ -291,7 +292,8 @@ between library sizes of the samples into account.
 should return similar results.
 
 ```{r VarianceStabilization, fig.width = 15, fig.height = 8}
-DESeq.rlog <- rlog(DESeq.ds, blind = TRUE) # set blind = FALSE if the conditions 
+DESeq.rlog <- rlog(DESeq.ds, blind = TRUE) # this actually generates a different type of object
+# set blind = FALSE if the conditions 
 # are expected to introduce strong differences in a large proportion of the genes
 ```
 
@@ -315,33 +317,65 @@ counts - is tightened significantly using `rlog`.
 What does the mean-sd-plot show?
 
 ```{r meanSdPlots, fig.width = 15, fig.height = 8}
-library(ggplot2)
 # sequencing depth normalized log2(read counts)
-msd_plot <- meanSdPlot(log.norm.counts, ranks=FALSE, plot = FALSE)
+msd_plot <- vsn::meanSdPlot(log.norm.counts, ranks=FALSE, plot = FALSE)
 msd_plot$gg + ggtitle("Normal log transformation")
 
 # rlog-transformed read counts
-msd_plot <- meanSdPlot( rlog.norm.counts, ranks=FALSE, plot = FALSE)
+msd_plot <- vsn::meanSdPlot( rlog.norm.counts, ranks=FALSE, plot = FALSE)
 msd_plot$gg + ggtitle("rlog transformation")
 ```
 
 ```{r, echo=TRUE, eval = FALSE}
-save.image(file = "featureCountExploration.RDat")
+save.image(file = "~/Documents/Teaching/2018_RNA-seq/Rclass.RData")
 ```
 
-```{r}
+### Similarity assessments and clustering
+
+`pcaExplorer` lets you interact with the DESeq2-based plots and analyses.
+It has included hierarchical clustering of samples and PCA.
+
+#### `pcaExplorer`
+
+```{r eval=FALSE}
 #source("https://bioconductor.org/biocLite.R")
 #biocLite("pcaExplorer")
-library(pcaExplorer)
-pcaExplorer(dds = DESeq.ds, rlt = DESeq.rlog)
+pcaExplorer::pcaExplorer(dds = DESeq.ds, rlt = DESeq.rlog)
 ```
 
-How to do the PCA yourself (see the "protocol" part of pcaExplorer!)
 
-```{r pca}
-rv <- rowVars(assay(DESeq.rlog))
-select <- order(rv, decreasing = TRUE)[seq_len(500)]
-pca <- prcomp(t(assay(DESeq.rlog)[select, ]))
+#### Sample clustering using Pearson correlation
+
+The ENCODE consortium recommends that _"for messenger RNA, (...) biological replicates [should] display greater than 0.9 correlation for transcripts/features"_.
+
+The Pearson correlation coefficient is a measure of the strength of the linear relationship between two variables and is often used to assess the similarity of RNA-seq samples in a pair-wise fashion.
+It is defined as the **covariance of two variables divided by the product of their standard deviation**.
+
+Mimicking `pcaExplorer`'s heatmap:
+
+```{r }
+corr_coeff <- cor(rlog.norm.counts, method = "pearson")
+as.dist(1-corr_coeff, upper = TRUE) %>%as.matrix %>% pheatmap::pheatmap(., main = "Pearson correlation")
+```
+
+Just plot the dendrogram, comparing the effects of the `rlog` transformation.
+
+```{r fig.width=10, fig.height=5}
+par(mfrow=c(1,2))
+# Pearson corr. for rlog.norm values
+as.dist(1 - corr_coeff) %>% hclust %>% plot( ., labels = colnames(rlog.norm.counts), main = "rlog transformed read counts")
+
+# Pearson corr. for log.norm.values
+as.dist( 1 - cor(log.norm.counts, method = "pearson")) %>% hclust %>% plot( ., labels = colnames(log.norm.counts), main = "no rlog")
+```
+
+
+#### How to do the PCA yourself (see the "protocol" part of pcaExplorer!)
+
+```{r pca, eval=FALSE}
+rv <- rowVars(assay(DESeq.rlog)) # equivalent to rowVars(rlog.norm.counts)
+top_variable <- order(rv, decreasing = TRUE)[seq_len(500)]
+pca <- prcomp(t(assay(DESeq.rlog)[top_variable, ]))
 head(pca$x)
 ```
 
