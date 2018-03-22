@@ -1,0 +1,138 @@
+---
+title: "Comparing different DE tools"
+author: "Friederike Duendar, ABC"
+output:
+  html_document: default
+  pdf_document: default
+  toc: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+### EdgeR
+
+```{r running_edger}
+library(edgeR)
+sample_info.edger <- factor(c( rep("SNF2", 5), rep("WT", 5)))
+sample_info.edger <- relevel(sample_info.edger, ref = "WT")
+edgeR.DGElist <- DGEList(counts = readcounts,	group = sample_info.edger)
+
+keep <- rowSums( cpm(edgeR.DGElist) >= 1) >= 5
+edgeR.DGElist <- edgeR.DGElist[keep,]
+head(edgeR.DGElist$samples)
+ 
+edgeR.DGElist <- calcNormFactors(edgeR.DGElist, method = "TMM")
+edgeR.DGElist$samples
+
+design <- model.matrix(~sample_info.edger)
+edgeR.DGElist <- estimateDisp(edgeR.DGElist, design)
+edger_fit <- glmFit(edgeR.DGElist, design)
+edger_lrt <- glmLRT(edger_fit)
+
+DGE.results_edgeR <- topTags(edger_lrt, n = Inf, # to retrieve all genes
+							sort.by = "PValue", adjust.method = "BH")
+```
+
+### Limma-voom
+
+```{r running_limma}
+library(limma)
+rownames(design) <- colnames(edgeR.DGElist)
+voomTransformed <- voom(edgeR.DGElist, design, plot=FALSE)
+voomed.fitted <- lmFit(voomTransformed, design = design)
+voomed.fitted <- eBayes(voomed.fitted)
+DGE.results_limma <- topTable(voomed.fitted, coef = "sample_info.edgerSNF2",
+         number = Inf, adjust.method = "BH",
+         sort.by = "logFC")
+
+```
+
+## Comparing the results of the different DGE tools
+
+
+### How many genes were found in all tools?
+
+__Venn diagram__:
+
+```{r venn_plot, fig.height = 5, fig.width = 5}
+library(gplots)
+DE_list <- list(edger = rownames(subset(DGE.results_edgeR$table, FDR <= 0.05)),
+                deseq2 = rownames(subset(DGE.results, padj <= 0.05)),
+                limma = rownames(subset(DGE.results_limma, adj.P.Val <= 0.05))
+)
+venn(DE_list)
+```
+
+More sophisticated/useful diagram, especially if you are comparing more than 3 lists:
+
+```{r upset_plot}
+library(UpSetR)
+upset(fromList(DE_list), order.by = "freq")
+```
+
+### How well do the logFC agree?
+
+First, we need the genes that are part of all the DE lists.
+
+```{r custom_function}
+# if you want to use the following function, you will have to execute its code
+
+#' Make data.frame of memberships
+#'
+#' @details This function takes as input a list of vectors (e.g., 3 lists of names)
+#' and returns a data.frame that indicates for every unique entry the vector it is
+#' being part of. This is the basis for all venn diagrams.
+#' This function is basically the the same as \code{UpSetR::fromList()}, the only 
+#' difference being that I am adding rownames to the output.
+#'
+#' @param in_list list
+#' @return data.frame where the column names correspond to the names of the vectors
+#' of the list
+#' @examples
+#' listInput <- list(one = c(1, 2, 3, 5, 7, 8, 11, 12, 13),
+#'                  two = c(1, 2, 4, 5, 10),
+#'                  three = c(1, 5, 6, 7, 8, 9, 10, 12, 13))
+#' ups_input <- make_membership_df(listInput)
+make_membership_df <- function(in_list){
+  # get a vector of all entries
+  our_universe <- unique(unlist(in_list))
+
+  out_data <- unlist(lapply(in_list, function(x) {
+    x <- as.vector(match(our_universe, x)) # NA will be introduced for every no-match
+  }))
+
+  out_data[is.na(out_data)] <- as.integer(0) # mark every non-match with a zero
+  out_data[out_data != 0] <- as.integer(1) # every match gets a one
+  # get the correct shape of the data.frame
+  out_data <- matrix(out_data, ncol = length(in_list), byrow = F)
+  out_data <- out_data[which(rowSums(out_data) != 0), ]
+  out_data <- as.data.frame(out_data)
+  names(out_data) <- names(in_list)
+  row.names(out_data) <- our_universe
+  return(out_data)
+}
+```
+
+```{r eval=TRUE}
+DE_gns_all <- fromList(DE_list)
+rownames(DE_gns_all) <- unique(unlist(DE_list))
+head(DE_gns_all)
+# keep only those genes that were found to be DE in all three tools
+DE_gns_all <- row.names(DE_gns_all[rowSums(DE_gns_all) == 3,])
+DE_fc <- data.frame(edger = DGE.results_edgeR[DE_gns_all,]$table$logFC, 
+                    limma = DGE.results_limma[DE_gns_all,]$logFC,
+                    deseq2 = DGE.results[DE_gns_all,]$log2FoldChange,
+                   row.names = DE_gns_all)
+```
+
+```{r pairs_logFC, fig.width = 6, fig.height = 7}
+pairs(DE_fc)
+```
+
+```{r hm_logFC, fig.width = 4, fig.height = 7}
+pheatmap::pheatmap(as.matrix(DE_fc) )
+```
+

@@ -1,0 +1,302 @@
+---
+title: "Performing differential gene expression analysis"
+author: "Friederike Duendar, ABC"
+output:
+  html_document: default
+  pdf_document: default
+  toc: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r settingUp, warning=FALSE, echo=FALSE, message=FALSE}
+library(knitr)
+opts_chunk$set(echo = FALSE, message = FALSE,cache=TRUE)
+library(DESeq2)
+library(magrittr)
+load("~/Documents/Teaching/2018_RNA-seq/Rclass.RData")
+```
+
+We need to ensure that the fold change will be calculated using the WT as the base line.
+`DESeq` used the levels of the condition to determine the order of the comparison.
+
+```{r DESeqPrep_relevel}
+str(DESeq.ds$condition)
+DESeq.ds$condition <- relevel(DESeq.ds$condition, ref="WT")
+str(DESeq.ds$condition)
+```
+
+#### Analysis design
+
+```{r}
+design(DESeq.ds)
+```
+
+### Running the DE analysis
+
+```{r}
+DESeq.ds <- DESeq(DESeq.ds)
+```
+
+This one line of code is equivalent to these three lines of code:
+
+```{r eval=FALSE}
+DESeq.ds <- estimateSizeFactors(DESeq.ds) # sequencing depth normalization between the samples
+DESeq.ds <- estimateDispersions(DESeq.ds) # gene-wise dispersion estimates across all samples
+DESeq.ds <- nbinomWaldTest(DESeq.ds) # this fits a negative binomial GLM and applies Wald statistics to each gene
+```
+
+Extract the base means across samples, log2 fold changes, standard errors, 
+test statistics, p-values and adjusted p-values for every gene using `results()`.
+
+```{r}
+resultsNames(DESeq.ds) # tells you which types of values can be extracted with results()
+DGE.results <- results(DESeq.ds,
+                       independentFiltering = TRUE,
+                       alpha = 0.05)
+head(DGE.results) # the first line will tell you which comparison was done to achieve the log2FC
+summary(DGE.results)
+
+# the DESeqResult object can basically be handled like a data.frame
+table(DGE.results$padj < 0.05)
+```
+
+NAs in the `padj` column (but values in both `log2FC` and `pvalue`) are indicative of that gene being filtered out by the independent filtering [because it was very lowly expressed].
+
+The __MA-plot__ provides a global view of the differential genes, with the log2 fold
+change on the y-axis over the mean of normalized counts.
+
+Genes that pass the significance threshold (adjusted p.value \textless 0.05) are colored in red.
+
+```{r MAplots}
+plotMA(DGE.results, alpha = 0.05, 
+       main = "Test: p.adj.value < 0.05", ylim = c(-4,4))
+```
+
+A adj. p-value histogram:
+
+```{r adjpvalueHistogram}
+hist(DGE.results$padj, 
+     col="grey", border="white", xlab="", ylab="", main="frequencies of adj. p-values\n(all genes)")
+```
+
+A sorted results table:
+
+```{r}
+DGE.results.sorted <- DGE.results[order(DGE.results$padj),]
+head(DGE.results.sorted)
+```
+
+Plotting counts for single genes (seq. depth normalized, log2-transformed)
+
+```{r singleGenePlot}
+par(mfrow=c(1,2))
+plotCounts(DESeq.ds, gene="YAL056W", normalized = TRUE)  
+plotCounts(DESeq.ds, gene=which.max(DGE.results$padj), main = "Max. p.adj.")
+```
+
+`plotCounts` simply uses `counts(dds, normalized = TRUE) + 0.5`.
+
+You can also use `pcaExplorer` for individual gene plots of `rlog` values.
+
+A heatmap of the genes that show differential expression with adjusted p-value \textless 0.05 :
+
+```{r heatmaps}
+# identify genes with the desired adjusted p-value cut-off
+DGEgenes <- rownames(subset(DGE.results.sorted, padj < 0.05))
+
+# extract rlog-transformed values into a matrix
+hm.mat_DGEgenes <- rlog.norm.counts[DGEgenes,]
+
+library(pheatmap)
+# heatmap of DEG sorted by p.adjust
+pheatmap(hm.mat_DGEgenes, scale="none", show_rownames = FALSE, main = "DGE (no scaling)")
+pheatmap(hm.mat_DGEgenes, scale="row", show_rownames = FALSE, main = "DGE (row-based z-score)")
+```
+
+
+## Number 1 sanity check: is SNF2 affected in the SNF2 mutant yeast samples?
+
+To find this out, we need to retrieve the gene names and match them to the ORF 
+IDs that we've used so far.
+[http://www.bioconductor.org/packages/3.1/data/annotation/](http://www.bioconductor.org/packages/3.1/data/annotation/)
+lists annotation packages that are available within R through bioconductor.
+
+We will go with `org.Sc.sgd.db`.
+
+```{r checkForSNF2}
+#source("http://bioconductor.org/biocLite.R")
+#biocLite("org.Sc.sgd.db")
+library(org.Sc.sgd.db) # org.Hs.eg.db, org.Mm.eg.db
+
+# list keytypes that are available to query the annotation data base
+keytypes(org.Sc.sgd.db)
+
+# list columns that can be retrieved from the annotation data base
+columns(org.Sc.sgd.db)
+
+# make a batch retrieval for all DE genes
+DGEgenes <- rownames(subset(DGE.results.sorted, padj < 0.05))
+
+anno.DGE <- select(org.Sc.sgd.db,
+               keys = DGEgenes, # rownames
+               keytype="ORF", # our rownames are ORF identifiers
+               columns=c("SGD","GENENAME")) # what to return
+
+# check whether SNF2 pops up among the top downregulated genes
+#head(anno.DGE[match(DGEgenes, anno.DGE$ORF),])
+head(anno.DGE)
+
+```
+
+To get a feeling for how the difference between WT and snf2 ko looks like for a
+housekeeping gene, let's repeat the exercise.
+
+```{r singleGenePlot_noDGE, echo = FALSE}
+par(mfrow=c(1,2))
+plotCounts(dds = DESeq.ds,
+           gene = "YOR290C",
+           normalized = TRUE, transform = FALSE,
+           main = expression(atop("Expression of "*italic("snf2"), "(YOR290C)")))
+
+plotCounts(dds = DESeq.ds,
+           gene = "YGL012W", # the last gene in DGE
+           normalized = TRUE, transform = FALSE,
+           main = expression(atop("Expression of "*italic("erg4"), "(YGL012W)")))
+
+```
+
+Export the log2FC, p-values etc. into a text file:
+
+```{r, eval=FALSE}
+out.df <- merge(as.data.frame(DGE.results), anno.DGE, by.x = "row.names", by.y = "ORF")
+
+write.table(subset(out.df, padj < 0.05), file = "DESeq2results_WT-vs-SNF2.txt",
+            sep = "\t", quote = FALSE, row.names = FALSE)
+```
+
+## GO term enrichment
+
+Transcripts that are longer or more highly expressed give more statistical power
+for detecting differential expression between samples
+
+The same bias holds true for GO categories: categories with predominantly highly
+expressed or long genes are more likely to be found to be over-represented within
+the DEG.
+
+`GOseq`:
+
+1. determine DEG
+2. quantify likelihood of DE as a function of transcript length
+3. DE-versus-length-function is incorporated into the statistical test of each category's significance
+
+Couldn't get it to work with yeast yet.
+
+```{r goseq_yeast, eval = FALSE}
+# extract Entrez IDs for the genes of interest
+##DGEgenes.entrez <- subset(anno.all, ORF %in% DGEgenes, select = "ENTREZID")[,1] 
+##limma::goana(DGEgenes.entrez, geneid = DGEgenes.entrez)
+#DGEgenes.GO <- select(org.Sc.sgd.db, keys = DGEgenes, keytype = "ORF", columns = c("ORF", "GENENAME", "GO"))
+```
+
+Manual work-around for mouse:
+
+```{r goseq_mm, eval = FALSE}
+#biocLite("org.Mm.eg.db")
+#biocLite("goseq")
+#biocLite("biomaRt")
+library(biomaRt)
+library(org.Mm.eg.db)
+library(goseq)
+library(geneLenDataBase)
+
+# gene list from http://amp.pharm.mssm.edu/Enrichr/#
+# saved as genesGOtest.txt
+gns <- read.table("genesGOtest.txt", stringsAsFactors = FALSE)
+
+# retrieve the ENSEMBL symbols for the gene names
+anno.mm <- select(org.Mm.eg.db,
+               keys = gns$V1, 
+               keytype="SYMBOL", # our rownames are ORF identifiers
+               columns=c("ENSEMBL","SYMBOL","GENENAME")) # what to return
+
+# in addition, retrieve all possible mouse gene names
+# because goseq wants to know about the universe of all genes
+mart <- useMart(biomart = "ensembl", dataset = "mmusculus_gene_ensembl")
+mm_all <- getBM(attributes = c("ensembl_gene_id"),  mart = mart)
+
+# get length data using goseq's data base of gene lengths
+# first, load the data from the geneLenDataBase package
+data(list = "mm9.ensGene.LENGTH", package = "geneLenDataBase")
+
+# split the length values per ENSEMBL ID
+len_data = split(get("mm9.ensGene.LENGTH")$Length, 
+            get("mm9.ensGene.LENGTH")$Gene)
+
+# get the gene names from the length data base
+gn_names = get("mm9.ensGene.LENGTH")$Gene
+
+# calculate the median (and other) lengths for the 
+# different transcripts
+len = data.frame(Gene = names(len_data), 
+                 Median = sapply(len_data,median), 
+                 Min = sapply(len_data, min),
+                 Max = sapply(len_data, max),
+                 Count = sapply(len_data, length))
+
+# goseq wants a named binary vector where 1 represents DE, 0 not DE and the names are gene IDs.
+gogns <- as.integer(len$Gene %in% anno.mm$ENSEMBL)
+names(gogns) <- len$Gene
+
+# weighting for each gene, depending on its length, given by the PW
+# Probability Weighting Function (PWF)
+# proportion of DE genes is plotted as a function of the transcript length
+pwf = goseq::nullp(gogns, bias.data = len$Median) # probably looks bad because the genes weren't taken from a DE set, but from ChIP-seq, I think
+
+GO.wall=goseq(pwf, "mm9", "ensGene")
+
+# can be summarized in http://revigo.irb.hr/
+write.table(subset(GO.wall, over_represented_pvalue < 0.05, select = c("category","over_represented_pvalue")), "GOterms.txt", quote =FALSE, row.names = FALSE, col.names = FALSE)
+```
+
+
+
+#### Brief excursion: paired analysis design (also: blocked design)
+
+For paired experimental design (e.g., different tissues from multiple patients), an additive model is recommended.
+Put the factor you're more interested in last.
+For example, if you wanted to determine genes that differ in tumor vs. healthy tissue, the following design would work with DESeq2: `design(dds) <- formula(~patient + tissue)`.
+The last variable (`tissue`) will be automatically used to extract the fold changes later on.
+
+Technically, you will fit an individual base line for each patient, so that patient-to-patient differences in expression before treatment are absorbed [source](https://support.bioconductor.org/p/84241/).
+
+The general layout: `design <- formula(~Block+Treatment)`
+
+#### Brief excursion: Accounting for possible interactions
+
+Sometimes, you might be interested in changes where two factors are suspected to interact.
+Consider the example described [here](https://support.bioconductor.org/p/84241/): 
+
+|Patient.ID | Treatment |Response |
+|-----------|-----------|---------|
+|           1|       Pre |       N|
+|           1|        On  |      N|
+|           2|       Pre   |     N|
+|           2|        On  |      N|
+|           3|       Pre  |      N|
+|           3|        On  |      N|
+|           4|       Pre  |      N|
+|           4|        On  |      N|
+|           5|       Pre  |      N|
+|          5|        On   |     N |
+|          6|       Pre   |     Y |
+|          6|        On   |     Y |
+|          7|       Pre   |     Y |
+|          7|        On   |     Y |
+|          8|       Pre   |     Y |
+|          8|        On   |     Y |
+
+If you wanted to see how the `Treatment` effects depend on the `Response`, you would have to add an interaction term for `Treatment * Response`.
+
+`Treatment` effect 
+`Treatment:Response` will then be the additional effect that comes on top of that if the patient is a responder.
