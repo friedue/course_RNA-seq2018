@@ -129,7 +129,7 @@ This is a rather ad-hoc way of doing this since we still use the observation abo
 
 ## QC of RAW READS
 
-We will make a folder where we are going to keep track of all the different QC steps, so let's start by re-running `FastQC`.
+We will make a folder where we are going to keep track of all the different QC steps, so let's start by running `FastQC`.
 Note that the following file paths assume that you're within the folder `class`, which comes right after your home directory (`~/class`). Type `pwd` if you aren't sure where you are.    
 
 ```
@@ -175,3 +175,5 @@ The report should show you that:
 - the two samples have very similar GC contents, numbers of reads and duplication rates
 - the GC content for `SNF2_rep1` and `WT_rep1`, however, are distinct, reflecting the library-specific biases in regard to GC
 - one technical replicate of `WT_rep1` has a slightly elevated adapter content
+
+For an example MultiQC result (following FastQC on 112 fastq files), check [this](http://chagall.med.cornell.edu/RNASEQcourse/multiqc_report.html) out.
