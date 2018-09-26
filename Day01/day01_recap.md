@@ -1,4 +1,4 @@
-# COCE RE-CAP OF DAY 1
+# CODE RE-CAP OF DAY 1
 #### RNA-SEQ COURSE / SEP 26, 2018 / APPLIED BIOINFORMATICS CORE
 
 Log into the server of the amazon cloud that Juan at MSKCC has set up for you:
