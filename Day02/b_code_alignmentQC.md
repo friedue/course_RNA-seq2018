@@ -204,5 +204,5 @@ In a separate terminal, navigate to a directory of your liking, e.g. `~/Download
 Then copy the html file from the server:
 
 ```
-scp <user name>@<server IP>:/home/<user name>/class/QC/multiQC/*html .
+scp <user name>@<server IP>:<path to>/multiQC/*html .
 ```
