@@ -8,7 +8,6 @@ We will make one directory per sample and collect the different QC outputs in th
 ```
 mkdir alignment_qc
 cd alignment_qc
-ln -s ~/mat/precomputed/results_alignment/ bam_files
 ```
 
 ### STAR log files
@@ -16,6 +15,7 @@ ln -s ~/mat/precomputed/results_alignment/ bam_files
 Just need to be copied from the alignment folder:
 
 ```
+ln -s ~/mat/precomputed/results_alignment/ bam_files
 for SAMPLE in SNF2_1 WT_1
 do
 	for i in bam_files/${SAMPLE}/*Log*final.out
