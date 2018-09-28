@@ -33,6 +33,6 @@ do
     FILES=`echo $FILES | sed 's/ //g'`
 	echo "Aligning files for ${SAMPLE}, files:"
 	echo $FILES 
-    $runSTAR --genomeDir ${REF_DIR} --readFilesIn $FILES --readFilesCommand gunzip -c  --outFileNamePrefix ${SAMPLE}_  --outFilterMultimapNmax 1 outSAMtype BAM SortedByCoordinate --runThreadN 2 --twopassMode Basic  --alignIntronMin 1  --alignIntronMax 3000 
+    $runSTAR --genomeDir ${REF_DIR} --readFilesIn $FILES --readFilesCommand gunzip -c  --outFileNamePrefix ${SAMPLE}_  --outFilterMultimapNmax 1 --outSAMtype BAM SortedByCoordinate --runThreadN 2 --twopassMode Basic  --alignIntronMin 1  --alignIntronMax 3000 
 done
 ```
