@@ -8,6 +8,7 @@ We will make one directory per sample and collect the different QC outputs in th
 ```
 mkdir alignment_qc
 cd alignment_qc
+mkdir SNF2_1 WT_1
 ```
 
 ### STAR log files
@@ -31,7 +32,7 @@ For each read, this tool will look at the FLAG (field 4) and count the types
 of settings.
 
 ```
-export PATH=~/mat/software/samtools-1.7/:$PATH
+export PATH=~/mat/software/samtools-1.7/bin/:$PATH
 
 for SAMPLE in SNF2_1 WT_1
 do
