@@ -33,6 +33,7 @@ You can find those files here: `~/mat/precomputed/results_alignment`.
 >How can you check which command was used to generate those `BAM` files?
 
 ```{r featureCounts, eval=FALSE, echo = TRUE, engine='bash'}
+## on the command line (!)
 mkdir class/read_counts
 cd class/read_counts
 REF_DIR=~/mat/referenceGenomes/S_cerevisiae/
@@ -44,7 +45,9 @@ REF_DIR=~/mat/referenceGenomes/S_cerevisiae/
 	 ~/mat/precomputed/results_alignment/*bam 
 ```
 
-Let's read the result file into R, i.e. download the table from [our website](http://chagall.med.cornell.edu/RNASEQcourse/featureCounts_result.txt).
+Let's read the result file into R, i.e. download the table from [our website](http://chagall.med.cornell.edu/RNASEQcourse/featureCounts_result.txt) or
+use the `scp` command to download the table that you generated on the server to
+your local machine.
 
 Loading additional libraries:
 
@@ -201,23 +204,20 @@ It is usually helpful to *transform* the normalized read counts to bring them on
 of log2(read counts) - one for unnormalized counts, the other one for normalized
 counts (exclude genes with zero reads in all samples).
 
-```{r boxplots_logReadCounts, fig.width = 10, fig.height = 15}
+```{r boxplots_logReadCounts, fig.width = 10, fig.height = 5}
 par(mfrow=c(1,2)) # to plot the two box plots next to each other
-boxplot(log.counts, notch=TRUE,
+boxplot(log2(counts(DESeq.ds)), notch=TRUE,
         main = "Non-normalized read counts\n(log-transformed)",
         ylab="read counts")
-boxplot(log.norm.counts, notch=TRUE,
+boxplot(log2(counts(DESeq.ds, normalize= TRUE)), notch=TRUE,
         main = "Size-factor-normalized read counts\n(log-transformed)",
         ylab="read counts") 
 ```
 
---------------------------------
-
-## Day 4
 
 ### Understanding more properties of read count data
 
-Characteristics we've touched upon so farL:
+Characteristics we've touched upon so far:
 
 * zeros can mean two things: no expression or no detection
 * fairly large dynamic range
@@ -263,6 +263,7 @@ This can be assessed visually; the package `vsn` offers a simple function for th
 ```{r vsn}
 par(mfrow=c(1,1))
 # generate the base meanSdPlot using sequencing depth normalized log2(read counts)
+log.norm.counts <- log2(counts(DESeq.ds, normalized=TRUE) + 1)
 msd_plot <- vsn::meanSdPlot(log.norm.counts, 
                        ranks=FALSE, # show the data on the original scale
                        plot = FALSE)
@@ -316,11 +317,7 @@ As you can see in the left plot the variance - that is higher for small read
 counts - is tightened significantly using `rlog`.
 What does the mean-sd-plot show?
 
-```{r meanSdPlots, fig.width = 15, fig.height = 8}
-# sequencing depth normalized log2(read counts)
-msd_plot <- vsn::meanSdPlot(log.norm.counts, ranks=FALSE, plot = FALSE)
-msd_plot$gg + ggtitle("Normal log transformation")
-
+```{r vsn_meanSdPlots_rlog}
 # rlog-transformed read counts
 msd_plot <- vsn::meanSdPlot( rlog.norm.counts, ranks=FALSE, plot = FALSE)
 msd_plot$gg + ggtitle("rlog transformation")
