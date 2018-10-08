@@ -106,7 +106,7 @@ A heatmap of the genes that show differential expression with adjusted p-value \
 DGEgenes <- rownames(subset(DGE.results.sorted, padj < 0.05))
 
 # extract rlog-transformed values into a matrix
-hm.mat_DGEgenes <- rlog.norm.counts[DGEgenes,]
+rlog.dge <- DESeq.rlog[DGEgenes,] %>% assay
 
 library(pheatmap)
 # heatmap of DEG sorted by p.adjust
@@ -252,7 +252,7 @@ len = data.frame(Gene = names(len_data),
 # goseq wants a named binary vector where 
 # 1  = DE, 0 = not DE 
 # and the names of the [0,1]-vector are gene IDs
-gogns <- as.integer(len$Gene %in% anno.mm$ENSEMBL)
+gogns <- len$Gene %in% anno.mm$ENSEMBL %>% as.integer
 names(gogns) <- len$Gene
 
 # Quantifying the lenght bias (= weight for each gene)
